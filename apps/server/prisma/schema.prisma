@@ -18,22 +18,25 @@ model Scan {
   id        String     @id @default(cuid())
   url       String
   status    ScanStatus @default(PENDING)
+  error     String?
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
   pages     Page[]
 }
 
 model Page {
-  id         String    @id @default(cuid())
-  scanId     String
-  scan       Scan      @relation(fields: [scanId], references: [id], onDelete: Cascade)
-  url        String
-  finalUrl   String?
-  title      String?
-  statusCode Int?
-  metadata   Json?
-  createdAt  DateTime  @default(now())
-  findings   Finding[]
+  id             String    @id @default(cuid())
+  scanId         String
+  scan           Scan      @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  url            String
+  finalUrl       String?
+  title          String?
+  statusCode     Int?
+  screenshotPath String?
+  error          String?
+  metadata       Json?
+  createdAt      DateTime  @default(now())
+  findings       Finding[]
 
   @@index([scanId])
 }

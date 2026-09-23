@@ -31,9 +31,25 @@ export interface CrawledPage {
   contentType: string | null;
   language: string | null;
   description: string | null;
+  depth: number;
+  index: number;
   visibleText: string;
   interactions: Interaction[];
   screenshotPath: string | null;
+  error: string | null;
+}
+
+export interface CrawlOptions {
+  maxPages: number;
+  maxDepth: number;
+  timeoutMs: number;
+  screenshotDir: string;
+  screenshotPathPrefix: string;
+}
+
+export interface CrawlResult {
+  pages: CrawledPage[];
+  errors: string[];
 }
 
 export class CrawlError extends Error {

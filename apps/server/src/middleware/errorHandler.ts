@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { HttpError } from "../lib/httpError.js";
+import { CrawlError } from "../crawler/types.js";
 
 function isInvalidJson(error: unknown): error is SyntaxError {
   return (
@@ -17,6 +18,12 @@ export function errorHandler(error: unknown, _req: Request, res: Response, _next
 
   if (error instanceof HttpError) {
     res.status(error.status).json({ error: error.message });
+    return;
+  }
+
+  if (error instanceof CrawlError) {
+    console.error(error);
+    res.status(502).json({ error: error.message });
     return;
   }
 
