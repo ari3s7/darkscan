@@ -5,6 +5,9 @@
     "apps/*",
     "packages/*"
   ],
+  "scripts": {
+    "dev:web": "npm run dev -w @darkscan/web"
+  },
   "engines": {
     "node": ">=20"
   }

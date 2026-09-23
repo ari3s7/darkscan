@@ -1,0 +1,88 @@
+import { useState, type FormEvent } from "react";
+import { requestScan, type ScanResult } from "./api";
+
+export function App() {
+  const [url, setUrl] = useState("");
+  const [status, setStatus] = useState("Idle");
+  const [message, setMessage] = useState("Enter a URL to start a scan.");
+  const [scan, setScan] = useState<ScanResult | null>(null);
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setStatus("Scanning");
+    setMessage("Loading the page…");
+    setScan(null);
+
+    try {
+      const result = await requestScan(url);
+      const page = result.pages[0];
+      setScan(result);
+      setStatus("Completed");
+      setMessage(page?.title ? `Loaded “${page.title}”.` : "Scan finished.");
+    } catch (error) {
+      setStatus("Failed");
+      setMessage(error instanceof Error ? error.message : "Scan failed");
+    }
+  }
+
+  const page = scan?.pages[0];
+
+  return (
+    <main>
+      <p className="eyebrow">Website audit</p>
+      <h1>DarkScan</h1>
+      <p className="lede">Submit a page URL. This pass stores the page and its metadata.</p>
+
+      <form onSubmit={onSubmit}>
+        <label htmlFor="url">Page URL</label>
+        <div className="row">
+          <input
+            id="url"
+            name="url"
+            type="url"
+            inputMode="url"
+            placeholder="https://example.com"
+            value={url}
+            onChange={(event) => {
+              setUrl(event.target.value);
+            }}
+            required
+          />
+          <button type="submit" disabled={status === "Scanning"}>
+            {status === "Scanning" ? "Scanning…" : "Scan"}
+          </button>
+        </div>
+      </form>
+
+      <section className="status" aria-live="polite">
+        <h2>Scan status</h2>
+        <p className="state">{status}</p>
+        <p>{message}</p>
+        {scan && (
+          <dl>
+            <div>
+              <dt>Scan</dt>
+              <dd>{scan.id}</dd>
+            </div>
+            <div>
+              <dt>Requested URL</dt>
+              <dd>{scan.url}</dd>
+            </div>
+            <div>
+              <dt>Final URL</dt>
+              <dd>{page?.finalUrl ?? "—"}</dd>
+            </div>
+            <div>
+              <dt>Title</dt>
+              <dd>{page?.title ?? "—"}</dd>
+            </div>
+            <div>
+              <dt>HTTP status</dt>
+              <dd>{page?.statusCode ?? "—"}</dd>
+            </div>
+          </dl>
+        )}
+      </section>
+    </main>
+  );
+}
