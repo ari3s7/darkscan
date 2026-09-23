@@ -4,12 +4,15 @@ export interface PageResult {
   finalUrl: string | null;
   title: string | null;
   statusCode: number | null;
+  screenshotPath?: string | null;
+  error?: string | null;
 }
 
 export interface ScanResult {
   id: string;
   url: string;
   status: string;
+  errors?: string[];
   pages: PageResult[];
 }
 

@@ -170,3 +170,11 @@ export async function createScan(url: string): Promise<ScanResponse> {
     throw error;
   }
 }
+
+export async function getScan(id: string): Promise<ScanResponse | null> {
+  const scan = await prisma.scan.findUnique({
+    where: { id },
+    include: scanWithPages,
+  });
+  return scan ? toScanResponse(scan) : null;
+}

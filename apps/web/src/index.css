@@ -120,6 +120,25 @@ dd {
   overflow-wrap: anywhere;
 }
 
+.pages {
+  list-style: none;
+  margin: 1.25rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.pages li {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.meta {
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 640px) {
   .row {
     flex-direction: column;

@@ -16,9 +16,15 @@ export function App() {
     try {
       const result = await requestScan(url);
       const page = result.pages[0];
+      const failed = result.status === "FAILED";
       setScan(result);
-      setStatus("Completed");
-      setMessage(page?.title ? `Loaded “${page.title}”.` : "Scan finished.");
+      setStatus(failed ? "Failed" : "Completed");
+      if (failed) {
+        setMessage(result.errors?.[0] ?? "Scan failed.");
+      } else {
+        const count = result.pages.length;
+        setMessage(page?.title ? `Crawled ${count} page${count === 1 ? "" : "s"}.` : "Scan finished.");
+      }
     } catch (error) {
       setStatus("Failed");
       setMessage(error instanceof Error ? error.message : "Scan failed");
@@ -31,7 +37,7 @@ export function App() {
     <main>
       <p className="eyebrow">Website audit</p>
       <h1>DarkScan</h1>
-      <p className="lede">Submit a page URL. This pass stores the page and its metadata.</p>
+      <p className="lede">Submit a page URL. DarkScan crawls that site and stores each page it opens.</p>
 
       <form onSubmit={onSubmit}>
         <label htmlFor="url">Page URL</label>
@@ -80,7 +86,22 @@ export function App() {
               <dt>HTTP status</dt>
               <dd>{page?.statusCode ?? "—"}</dd>
             </div>
+            <div>
+              <dt>Pages</dt>
+              <dd>{scan.pages.length}</dd>
+            </div>
           </dl>
+        )}
+        {scan && scan.pages.length > 0 && (
+          <ul className="pages">
+            {scan.pages.map((item) => (
+              <li key={item.id}>
+                <span>{item.title ?? item.finalUrl ?? item.url}</span>
+                <span className="meta">{item.finalUrl ?? item.url}</span>
+                {item.screenshotPath && <span className="meta">{item.screenshotPath}</span>}
+              </li>
+            ))}
+          </ul>
         )}
       </section>
     </main>
