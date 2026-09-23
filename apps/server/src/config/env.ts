@@ -7,8 +7,17 @@ function readPort(): number {
   return port;
 }
 
+function readDatabaseUrl(): string {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    throw new Error("DATABASE_URL is required");
+  }
+  return databaseUrl;
+}
+
 export const env = {
   port: readPort(),
+  databaseUrl: readDatabaseUrl(),
   corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
   nodeEnv: process.env.NODE_ENV ?? "development",
 };
