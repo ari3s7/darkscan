@@ -14,7 +14,8 @@
     "@darkscan/rules": "*",
     "@prisma/client": "^6.16.1",
     "cors": "^2.8.5",
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "playwright": "^1.55.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
