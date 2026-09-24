@@ -4,6 +4,8 @@ import { CRAWL_MAX_DEPTH, CRAWL_MAX_PAGES, normalizeUrl } from "../crawler/crawl
 import { CrawlError, type CrawledPage, type Interaction } from "../crawler/types.js";
 import { runDetection } from "../detection/engine.js";
 import type { Finding } from "../detection/types.js";
+import { writeAnnotatedScreenshot } from "../evidence/annotate.js";
+import { createEvidence, dedupeEvidence, type EvidenceRecord } from "../evidence/record.js";
 import { crawlJourney } from "../journey/journey-engine.js";
 import type { JourneyRecord } from "../journey/types.js";
 import { prisma } from "../prisma/client.js";
@@ -113,6 +115,8 @@ function interactionsJson(interactions: Interaction[]): Prisma.InputJsonValue {
     if (typeof item.checked === "boolean") json.checked = item.checked;
     if (item.disabled) json.disabled = true;
     if (item.hidden) json.hidden = true;
+    if (item.selector) json.selector = item.selector;
+    if (item.box) json.box = item.box;
     return json;
   });
 }
@@ -176,30 +180,91 @@ interface JourneyLink {
   action?: { label: string; type: string; selector?: string };
 }
 
-async function saveFindings(findings: Finding[], journeyStepId?: string): Promise<void> {
+interface FindingContext {
+  scanId: string;
+  pageUrl: string;
+  screenshotPath?: string | null;
+  interactions: Interaction[];
+  journeyStepId?: string;
+  journeyId?: string;
+  action?: JourneyLink["action"];
+}
+
+function storedEvidence(record: EvidenceRecord): Prisma.InputJsonValue {
+  const content: Record<string, Prisma.InputJsonValue> = {
+    value: record.content.value,
+    pageUrl: record.content.pageUrl,
+    pageId: record.content.pageId,
+    ruleId: record.content.ruleId,
+    ruleName: record.content.ruleName,
+    confidence: record.content.confidence,
+    capturedAt: record.content.capturedAt,
+    scanId: record.content.scanId,
+  };
+  if (record.content.selector) content.selector = record.content.selector;
+  if (record.content.screenshotPath) content.screenshotPath = record.content.screenshotPath;
+  if (record.content.annotatedScreenshot) content.annotatedScreenshot = record.content.annotatedScreenshot;
+  if (record.content.box) {
+    content.box = {
+      x: record.content.box.x,
+      y: record.content.box.y,
+      width: record.content.box.width,
+      height: record.content.box.height,
+    };
+  }
+  if (record.content.journeyStepId) content.journeyStepId = record.content.journeyStepId;
+  if (record.content.journeyId) content.journeyId = record.content.journeyId;
+  if (record.content.action) {
+    const action: Record<string, Prisma.InputJsonValue> = {
+      label: record.content.action.label,
+      type: record.content.action.type,
+    };
+    if (record.content.action.selector) action.selector = record.content.action.selector;
+    content.action = action;
+  }
+  return content;
+}
+
+async function saveFindings(findings: Finding[], context: FindingContext): Promise<void> {
+  const capturedAt = new Date().toISOString();
   for (const finding of findings) {
     const existing = await prisma.finding.findFirst({
       where: { pageId: finding.pageId, ruleId: finding.ruleId },
       select: { id: true },
     });
-    if (existing || finding.evidence.length === 0) continue;
+    if (existing) continue;
+    const records = dedupeEvidence(
+      finding.evidence.flatMap((item) => {
+        const record = createEvidence(finding, item, {
+          ...context,
+          pageId: finding.pageId,
+          capturedAt,
+        });
+        return record ? [record] : [];
+      }),
+    );
+    if (records.length === 0) continue;
+    for (const [index, record] of records.entries()) {
+      if (!record.content.box || !record.content.screenshotPath) continue;
+      const annotated = await writeAnnotatedScreenshot(
+        record.content.screenshotPath,
+        record.content.box,
+        finding.ruleId,
+        index,
+      );
+      if (annotated) record.content.annotatedScreenshot = annotated;
+    }
     await prisma.finding.create({
       data: {
         page: { connect: { id: finding.pageId } },
         ruleId: finding.ruleId,
         severity: finding.severity,
         summary: finding.description,
-        ...(journeyStepId ? { journeyStep: { connect: { id: journeyStepId } } } : {}),
+        ...(context.journeyStepId ? { journeyStep: { connect: { id: context.journeyStepId } } } : {}),
         evidence: {
-          create: finding.evidence.map((item) => ({
-            type: item.type,
-            content: {
-              value: item.value,
-              ...(item.selector ? { selector: item.selector } : {}),
-              confidence: finding.confidence,
-              ruleId: finding.ruleId,
-              ruleName: finding.ruleName,
-            },
+          create: records.map((record) => ({
+            type: record.type,
+            content: storedEvidence(record),
           })),
         },
       },
@@ -327,7 +392,15 @@ export async function createScan(url: string): Promise<ScanResponse> {
         interactions: crawled.interactions,
       });
       const journey = journeyContext.get(saved.id);
-      await saveFindings(detected, journey?.journeyStepId);
+      await saveFindings(detected, {
+        scanId: scan.id,
+        pageUrl: crawled.finalUrl,
+        screenshotPath: crawled.screenshotPath,
+        interactions: crawled.interactions,
+        ...(journey?.journeyStepId ? { journeyStepId: journey.journeyStepId } : {}),
+        ...(journey?.journeyId ? { journeyId: journey.journeyId } : {}),
+        ...(journey?.action ? { action: journey.action } : {}),
+      });
     }
 
     const completed = await prisma.scan.update({

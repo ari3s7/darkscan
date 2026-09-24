@@ -9,6 +9,8 @@ export interface Interaction {
   hidden?: boolean;
   /** Stable selector captured with the element, when one can be built. */
   selector?: string;
+  /** Document coordinates of a visible element, used to highlight evidence. */
+  box?: { x: number; y: number; width: number; height: number };
 }
 
 export interface NavigationCandidate {

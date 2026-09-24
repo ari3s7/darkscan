@@ -6,6 +6,8 @@ import type { Interaction, NavigationCandidate, PageExtraction } from "./types.j
  * the crawler decides which ones are safe to open.
  */
 export async function extractPage(page: Page): Promise<PageExtraction> {
+  // tsx keeps function names with a helper that is not defined inside the page.
+  await page.evaluate("globalThis.__name = globalThis.__name || function (target) { return target; }");
   return page.evaluate((): PageExtraction => {
     const maxText = 20_000;
     const maxField = 300;
@@ -58,7 +60,26 @@ export async function extractPage(page: Page): Promise<PageExtraction> {
     const unsafeAction =
       /\b(log ?out|sign ?out|delete|unsubscribe|deactivate|buy now|place order|pay now|complete purchase|add to cart|complete order)\b/i;
 
-    function pushInteraction(item: Interaction): void {
+    function stamp(item: Interaction, element: Element): void {
+      const name = element.getAttribute("name");
+      if (name && /^[\w.:-]+$/.test(name)) {
+        item.selector = `${item.type}[name="${name.replaceAll('"', "")}"]`;
+      } else if (element.id) {
+        item.selector = `#${CSS.escape(element.id)}`;
+      }
+      if (item.hidden) return;
+      const rect = element.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      item.box = {
+        x: Math.round(rect.x + window.scrollX),
+        y: Math.round(rect.y + window.scrollY),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+      };
+    }
+
+    function pushInteraction(item: Interaction, element?: Element): void {
+      if (element) stamp(item, element);
       interactions.push(item);
     }
 
@@ -101,7 +122,7 @@ export async function extractPage(page: Page): Promise<PageExtraction> {
       if (text) interaction.text = text;
       if (disabled) interaction.disabled = true;
       if (hidden) interaction.hidden = true;
-      pushInteraction(interaction);
+      pushInteraction(interaction, anchor);
 
       if (!disabled && !anchor.hasAttribute("download")) {
         const resolved = resolveUrl(href);
@@ -130,7 +151,7 @@ export async function extractPage(page: Page): Promise<PageExtraction> {
       if (value) interaction.value = value;
       if (disabled) interaction.disabled = true;
       if (hidden) interaction.hidden = true;
-      pushInteraction(interaction);
+      pushInteraction(interaction, element);
 
       if (disabled || unsafeAction.test(text)) continue;
       const onclick = element.getAttribute("onclick") ?? "";
@@ -181,7 +202,7 @@ export async function extractPage(page: Page): Promise<PageExtraction> {
       if (name) interaction.name = name;
       if (disabled) interaction.disabled = true;
       if (hidden) interaction.hidden = true;
-      pushInteraction(interaction);
+      pushInteraction(interaction, field);
     }
 
     let formCount = 0;
