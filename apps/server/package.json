@@ -7,7 +7,7 @@
     "dev": "tsx watch --env-file=.env src/index.ts",
     "build": "npm run build -w @darkscan/rules && prisma generate && tsc -p tsconfig.json",
     "start": "node --env-file=.env dist/index.js",
-    "test": "npm run build -w @darkscan/rules && prisma generate && tsc -p tsconfig.test.json --noEmit && node --import tsx --test test/rules/*.test.ts test/journey/*.test.ts test/evidence/*.test.ts",
+    "test": "npm run build -w @darkscan/rules && prisma generate && tsc -p tsconfig.test.json --noEmit && node --import tsx --test test/rules/*.test.ts test/journey/*.test.ts test/evidence/*.test.ts test/report/*.test.ts",
     "db:migrate": "prisma migrate deploy",
     "db:dev": "prisma migrate dev"
   },
