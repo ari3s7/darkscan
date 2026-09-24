@@ -19,6 +19,7 @@ model Scan {
   url       String
   status    ScanStatus @default(PENDING)
   error     String?
+  aiStatus  String?
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
   pages     Page[]
@@ -48,6 +49,7 @@ model Finding {
   pageId    String
   page      Page       @relation(fields: [pageId], references: [id], onDelete: Cascade)
   ruleId    String
+  source    String     @default("rule")
   severity  String?
   summary       String
   journeyStepId String?

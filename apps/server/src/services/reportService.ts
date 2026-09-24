@@ -21,6 +21,7 @@ export async function getScanReport(id: string): Promise<ComplianceReport | null
 
   return buildReport({
     scan: { id: scan.id, url: scan.url },
+    aiAnalysis: scan.aiStatus ?? undefined,
     pages: scan.pages.map((page) => ({
       id: page.id,
       url: page.url,
@@ -37,6 +38,7 @@ export async function getScanReport(id: string): Promise<ComplianceReport | null
       page.findings.map((finding) => ({
         id: finding.id,
         ruleId: finding.ruleId,
+        source: finding.source,
         severity: finding.severity,
         summary: finding.summary,
         pageId: finding.pageId,

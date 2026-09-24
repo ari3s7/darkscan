@@ -6,6 +6,9 @@ import { runDetection } from "../detection/engine.js";
 import type { Finding } from "../detection/types.js";
 import { writeAnnotatedScreenshot } from "../evidence/annotate.js";
 import { createEvidence, dedupeEvidence, type EvidenceRecord } from "../evidence/record.js";
+import { analyzeAmbiguousPages, mergeFindings } from "../ai/analyzer.js";
+import { createOpenAiClient } from "../ai/openai-client.js";
+import type { AiPageInput, AiStatus } from "../ai/types.js";
 import { crawlJourney } from "../journey/journey-engine.js";
 import type { JourneyRecord } from "../journey/types.js";
 import { prisma } from "../prisma/client.js";
@@ -62,8 +65,14 @@ export interface ScanResponse {
   updatedAt: string;
   pagesCrawled: number;
   findings: number;
+  aiAnalysis: AiStatus;
   journeys: JourneySummary[];
   pages: PageResponse[];
+}
+
+function readAiStatus(value: string | null): AiStatus {
+  if (value === "completed" || value === "unavailable" || value === "skipped") return value;
+  return "skipped";
 }
 
 function errorList(error: string | null): string[] {
@@ -92,6 +101,7 @@ function toScanResponse(scan: ScanWithPages): ScanResponse {
     updatedAt: scan.updatedAt.toISOString(),
     pagesCrawled: pages.length,
     findings: pages.reduce((total, page) => total + page.findings.length, 0),
+    aiAnalysis: readAiStatus(scan.aiStatus),
     journeys: journeySummaries(scan),
     pages: pages.map((page) => ({
       id: page.id,
@@ -214,6 +224,7 @@ function storedEvidence(record: EvidenceRecord): Prisma.InputJsonValue {
   }
   if (record.content.journeyStepId) content.journeyStepId = record.content.journeyStepId;
   if (record.content.journeyId) content.journeyId = record.content.journeyId;
+  if (record.content.reasoning) content.reasoning = record.content.reasoning;
   if (record.content.action) {
     const action: Record<string, Prisma.InputJsonValue> = {
       label: record.content.action.label,
@@ -239,6 +250,7 @@ async function saveFindings(findings: Finding[], context: FindingContext): Promi
           ...context,
           pageId: finding.pageId,
           capturedAt,
+          ...(finding.reasoning ? { reasoning: finding.reasoning } : {}),
         });
         return record ? [record] : [];
       }),
@@ -259,6 +271,7 @@ async function saveFindings(findings: Finding[], context: FindingContext): Promi
         page: { connect: { id: finding.pageId } },
         ruleId: finding.ruleId,
         severity: finding.severity,
+        source: finding.source ?? "rule",
         summary: finding.description,
         ...(context.journeyStepId ? { journeyStep: { connect: { id: context.journeyStepId } } } : {}),
         evidence: {
@@ -383,6 +396,8 @@ export async function createScan(url: string): Promise<ScanResponse> {
     }
 
     const journeyContext = await saveJourneys(scan.id, result.journeys, pageIdByUrl);
+    const reviewed: Array<{ savedId: string; crawled: (typeof savedPages)[number]["crawled"]; detected: ReturnType<typeof runDetection> }> = [];
+    const aiPages: AiPageInput[] = [];
     for (const { saved, crawled } of savedPages) {
       const detected = runDetection({
         id: saved.id,
@@ -391,8 +406,33 @@ export async function createScan(url: string): Promise<ScanResponse> {
         visibleText: crawled.visibleText,
         interactions: crawled.interactions,
       });
+      reviewed.push({ savedId: saved.id, crawled, detected });
       const journey = journeyContext.get(saved.id);
-      await saveFindings(detected, {
+      const aiPage: AiPageInput = {
+        id: saved.id,
+        url: crawled.finalUrl,
+        title: crawled.title,
+        visibleText: crawled.visibleText,
+        interactions: crawled.interactions,
+        screenshotPath: crawled.screenshotPath,
+        ruleFindings: detected,
+      };
+      if (journey?.journeyType) aiPage.journeyType = journey.journeyType;
+      if (journey?.pageKind) aiPage.pageKind = journey.pageKind;
+      aiPages.push(aiPage);
+    }
+
+    const aiClient = env.openAiApiKey ? createOpenAiClient(env.openAiApiKey, env.openAiModel) : null;
+    const ai = await analyzeAmbiguousPages(aiPages, aiClient).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : "AI request failed";
+      console.error(`AI analysis failed: ${message.replace(/sk-[A-Za-z0-9_\-]+/g, "[redacted]").slice(0, 180)}`);
+      return { status: "unavailable" as const, findings: [] };
+    });
+
+    for (const { savedId, crawled, detected } of reviewed) {
+      const journey = journeyContext.get(savedId);
+      const aiFindings = ai.findings.filter((finding) => finding.pageId === savedId);
+      await saveFindings(mergeFindings(detected, aiFindings), {
         scanId: scan.id,
         pageUrl: crawled.finalUrl,
         screenshotPath: crawled.screenshotPath,
@@ -408,6 +448,7 @@ export async function createScan(url: string): Promise<ScanResponse> {
       data: {
         status: "COMPLETED",
         error: result.errors.length > 0 ? result.errors.join("\n") : null,
+        aiStatus: ai.status,
       },
       include: scanWithPages,
     });
