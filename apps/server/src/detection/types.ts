@@ -8,7 +8,7 @@ export interface EvidenceItem {
   selector?: string;
 }
 
-/** A finding. Confidence is a signal weight, not a learned score. */
+/** A finding. Rule confidence is a signal weight. AI confidence is the validated model score. */
 export interface Finding {
   ruleId: string;
   ruleName: string;
@@ -17,6 +17,8 @@ export interface Finding {
   pageId: string;
   description: string;
   evidence: EvidenceItem[];
+  source?: "rule" | "ai";
+  reasoning?: string;
 }
 
 export interface DetectionPage {

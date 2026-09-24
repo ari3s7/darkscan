@@ -30,4 +30,6 @@ export const env = {
   corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
   crawlTimeoutMs: readTimeout(),
   nodeEnv: process.env.NODE_ENV ?? "development",
+  openAiApiKey: process.env.OPENAI_API_KEY?.trim() || undefined,
+  openAiModel: process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini",
 };
