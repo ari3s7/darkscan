@@ -1,13 +1,32 @@
 import { join } from "node:path";
 import type { Prisma, Scan } from "@prisma/client";
-import { CRAWL_MAX_DEPTH, CRAWL_MAX_PAGES, crawlSite } from "../crawler/crawler.js";
+import { CRAWL_MAX_DEPTH, CRAWL_MAX_PAGES, normalizeUrl } from "../crawler/crawler.js";
 import { CrawlError, type CrawledPage, type Interaction } from "../crawler/types.js";
+import { runDetection } from "../detection/engine.js";
+import type { Finding } from "../detection/types.js";
+import { crawlJourney } from "../journey/journey-engine.js";
+import type { JourneyRecord } from "../journey/types.js";
 import { prisma } from "../prisma/client.js";
 import { env } from "../config/env.js";
+
+const JOURNEY_ORDER = ["checkout", "signup", "subscription", "cancellation"];
 
 const scanWithPages = {
   pages: {
     orderBy: { createdAt: "asc" as const },
+    include: {
+      findings: {
+        select: { id: true, journeyStepId: true },
+      },
+    },
+  },
+  journeys: {
+    include: {
+      steps: {
+        orderBy: { position: "asc" as const },
+        select: { id: true, pageId: true },
+      },
+    },
   },
 } satisfies Prisma.ScanInclude;
 
@@ -24,13 +43,24 @@ export interface PageResponse {
   metadata: Prisma.JsonValue;
 }
 
+export interface JourneySummary {
+  type: string;
+  status: string;
+  pages: number;
+  findings: number;
+}
+
 export interface ScanResponse {
   id: string;
+  scanId: string;
   url: string;
   status: Scan["status"];
   errors: string[];
   createdAt: string;
   updatedAt: string;
+  pagesCrawled: number;
+  findings: number;
+  journeys: JourneySummary[];
   pages: PageResponse[];
 }
 
@@ -52,11 +82,15 @@ function toScanResponse(scan: ScanWithPages): ScanResponse {
   const pages = [...scan.pages].sort((a, b) => readIndex(a.metadata) - readIndex(b.metadata));
   return {
     id: scan.id,
+    scanId: scan.id,
     url: scan.url,
     status: scan.status,
     errors: errorList(scan.error),
     createdAt: scan.createdAt.toISOString(),
     updatedAt: scan.updatedAt.toISOString(),
+    pagesCrawled: pages.length,
+    findings: pages.reduce((total, page) => total + page.findings.length, 0),
+    journeys: journeySummaries(scan),
     pages: pages.map((page) => ({
       id: page.id,
       url: page.url,
@@ -83,7 +117,11 @@ function interactionsJson(interactions: Interaction[]): Prisma.InputJsonValue {
   });
 }
 
-function pageData(scanId: string, crawled: CrawledPage): Prisma.PageCreateInput {
+function pageKey(url: string): string {
+  return normalizeUrl(url) ?? url;
+}
+
+function pageData(scanId: string, crawled: CrawledPage, pageKind: string): Prisma.PageCreateInput {
   return {
     scan: { connect: { id: scanId } },
     url: crawled.requestedUrl,
@@ -98,10 +136,127 @@ function pageData(scanId: string, crawled: CrawledPage): Prisma.PageCreateInput 
       description: crawled.description,
       depth: crawled.depth,
       index: crawled.index,
+      pageKind,
       visibleText: crawled.visibleText,
       interactions: interactionsJson(crawled.interactions),
     },
   };
+}
+
+function journeySummaries(scan: ScanWithPages): JourneySummary[] {
+  const summaries = scan.journeys.map((journey) => {
+    const stepIds = new Set(journey.steps.map((step) => step.id));
+    const findings = scan.pages.reduce((total, page) => {
+      return (
+        total +
+        page.findings.filter((finding) => finding.journeyStepId !== null && stepIds.has(finding.journeyStepId))
+          .length
+      );
+    }, 0);
+    return {
+      type: journey.type,
+      status: journey.status,
+      pages: journey.steps.length,
+      findings,
+    };
+  });
+  return summaries.sort((a, b) => journeyRank(a.type) - journeyRank(b.type) || a.type.localeCompare(b.type));
+}
+
+function journeyRank(type: string): number {
+  const index = JOURNEY_ORDER.indexOf(type);
+  return index === -1 ? JOURNEY_ORDER.length : index;
+}
+
+interface JourneyLink {
+  journeyStepId: string;
+  journeyId: string;
+  journeyType: string;
+  pageKind: string;
+  action?: { label: string; type: string; selector?: string };
+}
+
+async function saveFindings(findings: Finding[], journeyStepId?: string): Promise<void> {
+  for (const finding of findings) {
+    const existing = await prisma.finding.findFirst({
+      where: { pageId: finding.pageId, ruleId: finding.ruleId },
+      select: { id: true },
+    });
+    if (existing || finding.evidence.length === 0) continue;
+    await prisma.finding.create({
+      data: {
+        page: { connect: { id: finding.pageId } },
+        ruleId: finding.ruleId,
+        severity: finding.severity,
+        summary: finding.description,
+        ...(journeyStepId ? { journeyStep: { connect: { id: journeyStepId } } } : {}),
+        evidence: {
+          create: finding.evidence.map((item) => ({
+            type: item.type,
+            content: {
+              value: item.value,
+              ...(item.selector ? { selector: item.selector } : {}),
+              confidence: finding.confidence,
+              ruleId: finding.ruleId,
+              ruleName: finding.ruleName,
+            },
+          })),
+        },
+      },
+    });
+  }
+}
+
+async function saveJourneys(scanId: string, journeys: JourneyRecord[], pageIdByUrl: Map<string, string>): Promise<Map<string, JourneyLink>> {
+  const contextByPage = new Map<string, JourneyLink>();
+  for (const journey of journeys) {
+    const created = await prisma.journey.create({
+      data: {
+        scan: { connect: { id: scanId } },
+        type: journey.type,
+        status: journey.status,
+        actions: journey.actions.map((action) => {
+          const stored: Record<string, Prisma.InputJsonValue> = { label: action.label, type: action.type };
+          if (action.selector) stored.selector = action.selector;
+          return stored;
+        }),
+        steps: {
+          create: journey.steps.map((step, position) => {
+            const pageId = pageIdByUrl.get(step.url);
+            return {
+              position,
+              pageKind: step.kind,
+              actionLabel: step.actionLabel ?? null,
+              actionSelector: step.actionSelector ?? null,
+              actionType: step.actionType ?? null,
+              ...(pageId ? { page: { connect: { id: pageId } } } : {}),
+            };
+          }),
+        },
+      },
+      include: { steps: { orderBy: { position: "asc" } } },
+    });
+
+    created.steps.forEach((step, index) => {
+      const source = journey.steps[index];
+      if (!step.pageId || !source) return;
+      const action = source.actionLabel
+        ? {
+            label: source.actionLabel,
+            type: source.actionType ?? "link",
+            ...(source.actionSelector ? { selector: source.actionSelector } : {}),
+          }
+        : undefined;
+      contextByPage.set(step.pageId, {
+        journeyStepId: step.id,
+        journeyId: created.id,
+        journeyType: journey.type,
+        pageKind: source.kind,
+        ...(action ? { action } : {}),
+      });
+    });
+  }
+  return contextByPage;
 }
 
 function screenshotDir(scanId: string): { directory: string; prefix: string } {
@@ -135,7 +290,7 @@ export async function createScan(url: string): Promise<ScanResponse> {
   const shots = screenshotDir(scan.id);
 
   try {
-    const result = await crawlSite(url, {
+    const result = await crawlJourney(url, {
       maxPages: CRAWL_MAX_PAGES,
       maxDepth: CRAWL_MAX_DEPTH,
       timeoutMs: env.crawlTimeoutMs,
@@ -149,8 +304,30 @@ export async function createScan(url: string): Promise<ScanResponse> {
       return failed;
     }
 
-    for (const crawled of result.pages) {
-      await prisma.page.create({ data: pageData(scan.id, crawled) });
+    const pageIdByUrl = new Map<string, string>();
+    const savedPages = [];
+    for (let index = 0; index < result.pages.length; index += 1) {
+      const crawled = result.pages[index];
+      if (!crawled) continue;
+      const saved = await prisma.page.create({
+        data: pageData(scan.id, crawled, result.kinds[index] ?? "unknown"),
+      });
+      savedPages.push({ saved, crawled });
+      pageIdByUrl.set(pageKey(crawled.finalUrl), saved.id);
+      pageIdByUrl.set(pageKey(crawled.requestedUrl), saved.id);
+    }
+
+    const journeyContext = await saveJourneys(scan.id, result.journeys, pageIdByUrl);
+    for (const { saved, crawled } of savedPages) {
+      const detected = runDetection({
+        id: saved.id,
+        url: crawled.finalUrl,
+        title: crawled.title,
+        visibleText: crawled.visibleText,
+        interactions: crawled.interactions,
+      });
+      const journey = journeyContext.get(saved.id);
+      await saveFindings(detected, journey?.journeyStepId);
     }
 
     const completed = await prisma.scan.update({

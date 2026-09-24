@@ -7,6 +7,8 @@ export interface Interaction {
   disabled?: boolean;
   /** Set when the control is not visible. Used later for hidden charges. */
   hidden?: boolean;
+  /** Stable selector captured with the element, when one can be built. */
+  selector?: string;
 }
 
 export interface NavigationCandidate {

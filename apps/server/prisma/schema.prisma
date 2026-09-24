@@ -22,6 +22,7 @@ model Scan {
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
   pages     Page[]
+  journeys  Journey[]
 }
 
 model Page {
@@ -35,8 +36,9 @@ model Page {
   screenshotPath String?
   error          String?
   metadata       Json?
-  createdAt      DateTime  @default(now())
+  createdAt      DateTime      @default(now())
   findings       Finding[]
+  journeySteps   JourneyStep[]
 
   @@index([scanId])
 }
@@ -47,12 +49,47 @@ model Finding {
   page      Page       @relation(fields: [pageId], references: [id], onDelete: Cascade)
   ruleId    String
   severity  String?
-  summary   String
-  createdAt DateTime   @default(now())
-  evidence  Evidence[]
+  summary       String
+  journeyStepId String?
+  journeyStep   JourneyStep? @relation(fields: [journeyStepId], references: [id], onDelete: SetNull)
+  createdAt     DateTime     @default(now())
+  evidence      Evidence[]
 
   @@index([pageId])
   @@index([ruleId])
+  @@index([journeyStepId])
+}
+
+model Journey {
+  id        String        @id @default(cuid())
+  scanId    String
+  scan      Scan          @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  type      String
+  status    String
+  actions   Json
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  steps     JourneyStep[]
+
+  @@unique([scanId, type])
+  @@index([scanId])
+}
+
+model JourneyStep {
+  id             String    @id @default(cuid())
+  journeyId      String
+  journey        Journey   @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+  pageId         String?
+  page           Page?     @relation(fields: [pageId], references: [id], onDelete: SetNull)
+  position       Int
+  pageKind       String
+  actionLabel    String?
+  actionSelector String?
+  actionType     String?
+  findings       Finding[]
+
+  @@index([journeyId])
+  @@index([pageId])
 }
 
 model Evidence {
