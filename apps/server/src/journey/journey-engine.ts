@@ -5,6 +5,7 @@ import { launchBrowser } from "../crawler/browser.js";
 import { normalizeUrl } from "../crawler/crawler.js";
 import { extractPage } from "../crawler/page-extractor.js";
 import { CrawlError, type CrawledPage, type CrawlOptions } from "../crawler/types.js";
+import { publicUrlProblem } from "../lib/urlSafety.js";
 import {
   actionKey,
   claim,
@@ -47,6 +48,10 @@ function shortError(error: unknown): string {
   return "Unable to load the page";
 }
 
+async function blockedTarget(url: string, options: CrawlOptions, cache: Map<string, string | null>): Promise<string | null> {
+  if (options.allowPrivateHosts !== false) return null;
+  return publicUrlProblem(url, false, cache);
+}
 
 function publicAction(action: DiscoveredAction): JourneyAction {
   const stored: JourneyAction = { label: action.label, type: action.type };
@@ -191,6 +196,10 @@ async function clickIfSafe(page: Page, action: DiscoveredAction, timeoutMs: numb
 export async function crawlJourney(startUrl: string, options: CrawlOptions): Promise<JourneyCrawlResult> {
   const start = normalizeUrl(startUrl);
   if (!start) return { pages: [], errors: ["Starting URL is not a valid http(s) URL"], journeys: [], kinds: [] };
+  const hostCache = new Map<string, string | null>();
+  const blockedStart = await blockedTarget(start, options, hostCache);
+  if (blockedStart) return { pages: [], errors: [blockedStart], journeys: [], kinds: [] };
+
   const pages: CrawledPage[] = [];
   const errors: string[] = [];
   const visits: VisitRecord[] = [];
@@ -204,6 +213,21 @@ export async function crawlJourney(startUrl: string, options: CrawlOptions): Pro
   try {
     browser = await launchBrowser();
     const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    if (options.allowPrivateHosts === false) {
+      await context.route("**/*", async (route) => {
+        const target = route.request().url();
+        if (!target.startsWith("http://") && !target.startsWith("https://")) {
+          await route.continue();
+          return;
+        }
+        const problem = await blockedTarget(target, options, hostCache);
+        if (problem) {
+          await route.abort().catch(() => undefined);
+          return;
+        }
+        await route.continue();
+      });
+    }
     const page = await context.newPage();
     page.setDefaultNavigationTimeout(options.timeoutMs);
     page.setDefaultTimeout(options.timeoutMs);
@@ -218,6 +242,11 @@ export async function crawlJourney(startUrl: string, options: CrawlOptions): Pro
       if (!current) break;
 
       try {
+        const blocked = await blockedTarget(current.url, options, hostCache);
+        if (blocked) {
+          errors.push(`${current.url}: ${blocked}`);
+          continue;
+        }
         const response = await page.goto(current.url, {
           waitUntil: "domcontentloaded",
           timeout: options.timeoutMs,
@@ -239,6 +268,12 @@ export async function crawlJourney(startUrl: string, options: CrawlOptions): Pro
           errors.push(`${current.url}: redirected outside the site`);
           continue;
         }
+        const blockedFinal = await blockedTarget(finalUrl, options, hostCache);
+        if (blockedFinal) {
+          errors.push(`${current.url}: ${blockedFinal}`);
+          continue;
+        }
+
         const normalizedFinal = normalizeUrl(finalUrl) ?? finalUrl;
         if (saved.has(normalizedFinal)) continue;
 

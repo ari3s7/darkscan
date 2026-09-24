@@ -1,10 +1,15 @@
+import { normalizeUrl } from "../crawler/crawler.js";
 import { HttpError } from "./httpError.js";
+import { publicUrlProblem } from "./urlSafety.js";
 
 export interface ScanRequest {
   url: string;
 }
 
-export function parseScanRequest(body: unknown): ScanRequest {
+export async function parseScanRequest(
+  body: unknown,
+  options?: { allowPrivateHosts?: boolean },
+): Promise<ScanRequest> {
   if (typeof body !== "object" || body === null) {
     throw new HttpError(400, "Request body must be a JSON object");
   }
@@ -28,6 +33,13 @@ export function parseScanRequest(body: unknown): ScanRequest {
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new HttpError(400, "url must use http or https");
   }
+  if (parsed.username || parsed.password) {
+    throw new HttpError(400, "url must not include credentials");
+  }
 
-  return { url: parsed.toString() };
+  const normalized = normalizeUrl(parsed.toString());
+  if (!normalized) throw new HttpError(400, "url must be a valid absolute URL");
+  const problem = await publicUrlProblem(normalized, options?.allowPrivateHosts === true);
+  if (problem) throw new HttpError(400, problem);
+  return { url: normalized };
 }

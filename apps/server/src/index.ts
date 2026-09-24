@@ -8,7 +8,13 @@ import { router } from "./routes/index.js";
 
 const app = express();
 
-app.use(cors({ origin: env.corsOrigin }));
+app.use(
+  cors({
+    origin: env.corsOrigin,
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type"],
+  }),
+);
 app.use("/screenshots", express.static(join(process.cwd(), "storage", "screenshots")));
 app.use(express.json());
 app.use(router);

@@ -1,0 +1,45 @@
+body {
+  margin: 0;
+  font-family: Georgia, serif;
+  color: #1c1915;
+  background: #f4efe4;
+}
+
+main {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.banner {
+  margin: 0 0 1rem;
+  padding: 0.7rem 0.8rem;
+  background: #fff4cc;
+  border: 1px solid #1c1915;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.9rem;
+}
+
+nav {
+  display: flex;
+  gap: 0.8rem;
+  margin: 1rem 0;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+button,
+.decline {
+  font: inherit;
+}
+
+.decline {
+  display: inline-block;
+  margin-top: 0.8rem;
+  padding: 0.45rem 0.7rem;
+  background: #efe7da;
+}
+
+.urgency {
+  color: #9f2d20;
+  font-weight: 700;
+}

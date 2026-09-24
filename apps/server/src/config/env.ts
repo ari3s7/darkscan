@@ -29,6 +29,7 @@ export const env = {
   databaseUrl: readDatabaseUrl(),
   corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
   crawlTimeoutMs: readTimeout(),
+  crawlAllowPrivate: process.env.CRAWL_ALLOW_PRIVATE === "true",
   nodeEnv: process.env.NODE_ENV ?? "development",
   openAiApiKey: process.env.OPENAI_API_KEY?.trim() || undefined,
   openAiModel: process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini",

@@ -378,6 +378,14 @@ async function failedScan(id: string, message: string): Promise<ScanResponse | n
 }
 
 export async function createScan(url: string): Promise<ScanResponse> {
+  const recent = new Date(Date.now() - 10 * 60 * 1000);
+  const active = await prisma.scan.findFirst({
+    where: { url, status: "RUNNING", updatedAt: { gte: recent } },
+    orderBy: { createdAt: "desc" },
+    include: scanWithPages,
+  });
+  if (active) return toScanResponse(active);
+
   const scan = await prisma.scan.create({
     data: { url, status: "RUNNING" },
   });
@@ -390,6 +398,7 @@ export async function createScan(url: string): Promise<ScanResponse> {
       timeoutMs: env.crawlTimeoutMs,
       screenshotDir: shots.directory,
       screenshotPathPrefix: shots.prefix,
+      allowPrivateHosts: env.crawlAllowPrivate,
     });
 
     if (result.pages.length === 0) {

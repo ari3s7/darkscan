@@ -49,6 +49,8 @@ export interface CrawlOptions {
   timeoutMs: number;
   screenshotDir: string;
   screenshotPathPrefix: string;
+  /** When false, navigation to local and private addresses is refused. */
+  allowPrivateHosts?: boolean;
 }
 
 export interface CrawlResult {

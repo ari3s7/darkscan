@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { env } from "../config/env.js";
 import { HttpError } from "../lib/httpError.js";
 import { parseScanRequest } from "../lib/validateScanRequest.js";
 import { asyncHandler } from "../middleware/asyncHandler.js";
@@ -6,7 +7,7 @@ import { getScanReport } from "../services/reportService.js";
 import { createScan, getScan } from "../services/scanService.js";
 
 export const createScanHandler = asyncHandler(async (req: Request, res: Response) => {
-  const { url } = parseScanRequest(req.body);
+  const { url } = await parseScanRequest(req.body, { allowPrivateHosts: env.crawlAllowPrivate });
   const scan = await createScan(url);
   res.status(201).json(scan);
 });
