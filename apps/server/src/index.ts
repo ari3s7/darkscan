@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import cors from "cors";
 import express from "express";
 import { env } from "./config/env.js";
@@ -8,6 +9,7 @@ import { router } from "./routes/index.js";
 const app = express();
 
 app.use(cors({ origin: env.corsOrigin }));
+app.use("/screenshots", express.static(join(process.cwd(), "storage", "screenshots")));
 app.use(express.json());
 app.use(router);
 app.use(notFound);

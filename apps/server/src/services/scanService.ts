@@ -29,7 +29,7 @@ const scanWithPages = {
     include: {
       steps: {
         orderBy: { position: "asc" as const },
-        select: { id: true, pageId: true },
+        select: { id: true, pageId: true, position: true, pageKind: true, actionLabel: true },
       },
     },
   },
@@ -48,11 +48,20 @@ export interface PageResponse {
   metadata: Prisma.JsonValue;
 }
 
+export interface JourneyStepSummary {
+  id: string;
+  pageId: string | null;
+  position: number;
+  pageKind: string;
+  actionLabel: string | null;
+}
+
 export interface JourneySummary {
   type: string;
   status: string;
   pages: number;
   findings: number;
+  steps: JourneyStepSummary[];
 }
 
 export interface ScanResponse {
@@ -172,6 +181,13 @@ function journeySummaries(scan: ScanWithPages): JourneySummary[] {
       status: journey.status,
       pages: journey.steps.length,
       findings,
+      steps: journey.steps.map((step) => ({
+        id: step.id,
+        pageId: step.pageId,
+        position: step.position,
+        pageKind: step.pageKind,
+        actionLabel: step.actionLabel,
+      })),
     };
   });
   return summaries.sort((a, b) => journeyRank(a.type) - journeyRank(b.type) || a.type.localeCompare(b.type));
