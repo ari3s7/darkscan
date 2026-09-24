@@ -39,6 +39,12 @@ function blankToNull(value: string | null | undefined): string | null {
   return trimmed ? trimmed : null;
 }
 
+function browserFailure(error: unknown): string {
+  const cause = error instanceof Error ? error.message : "Unable to crawl the site";
+  const line = cause.split("\n").find((item) => item.trim().length > 0) ?? "Unable to crawl the site";
+  return line.replace(/\s+/g, " ").slice(0, 240);
+}
+
 function shortError(error: unknown): string {
   if (error instanceof Error) {
     if (/timeout/i.test(error.message)) return "timed out";
@@ -379,7 +385,7 @@ export async function crawlJourney(startUrl: string, options: CrawlOptions): Pro
     }
   } catch (error) {
     if (error instanceof CrawlError) throw error;
-    throw new CrawlError("Unable to crawl the site", { cause: error });
+    throw new CrawlError(browserFailure(error), { cause: error });
   } finally {
     await browser?.close();
   }
