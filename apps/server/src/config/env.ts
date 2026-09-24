@@ -24,6 +24,17 @@ function readDatabaseUrl(): string {
   return databaseUrl;
 }
 
+const openRouterApiKey = process.env.OPENROUTER_API_KEY?.trim() || undefined;
+const configuredModel = process.env.OPENAI_MODEL?.trim();
+
+function readModel(): string {
+  if (openRouterApiKey) {
+    if (!configuredModel) return "openai/gpt-4o-mini";
+    return configuredModel.includes("/") ? configuredModel : `openai/${configuredModel}`;
+  }
+  return configuredModel || "gpt-4o-mini";
+}
+
 export const env = {
   port: readPort(),
   databaseUrl: readDatabaseUrl(),
@@ -31,6 +42,7 @@ export const env = {
   crawlTimeoutMs: readTimeout(),
   crawlAllowPrivate: process.env.CRAWL_ALLOW_PRIVATE === "true",
   nodeEnv: process.env.NODE_ENV ?? "development",
-  openAiApiKey: process.env.OPENAI_API_KEY?.trim() || undefined,
-  openAiModel: process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini",
+  openAiApiKey: openRouterApiKey || process.env.OPENAI_API_KEY?.trim() || undefined,
+  openAiBaseUrl: openRouterApiKey ? "https://openrouter.ai/api/v1" : undefined,
+  openAiModel: readModel(),
 };

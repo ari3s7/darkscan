@@ -27,8 +27,11 @@ async function imageContent(screenshotPath: string): Promise<OpenAI.Chat.Complet
   }
 }
 
-export function createOpenAiClient(apiKey: string, model: string): AiClient {
-  const client = new OpenAI({ apiKey });
+export function createOpenAiClient(apiKey: string, model: string, baseURL?: string): AiClient {
+  const client = new OpenAI({
+    apiKey,
+    ...(baseURL ? { baseURL, defaultHeaders: { "X-Title": "DarkScan" } } : {}),
+  });
   return {
     async complete(request: AiCompletionRequest): Promise<unknown> {
       try {

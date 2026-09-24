@@ -447,7 +447,7 @@ export async function createScan(url: string): Promise<ScanResponse> {
       aiPages.push(aiPage);
     }
 
-    const aiClient = env.openAiApiKey ? createOpenAiClient(env.openAiApiKey, env.openAiModel) : null;
+    const aiClient = env.openAiApiKey ? createOpenAiClient(env.openAiApiKey, env.openAiModel, env.openAiBaseUrl) : null;
     const ai = await analyzeAmbiguousPages(aiPages, aiClient).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : "AI request failed";
       console.error(`AI analysis failed: ${message.replace(/sk-[A-Za-z0-9_\-]+/g, "[redacted]").slice(0, 180)}`);

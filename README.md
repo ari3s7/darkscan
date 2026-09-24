@@ -51,8 +51,9 @@ Server (`apps/server/.env`):
 | `CORS_ORIGIN` | Browser origin allowed to call the API. Default `http://localhost:5173`. |
 | `CRAWL_TIMEOUT_MS` | Navigation timeout per page. Default `30000`. |
 | `CRAWL_ALLOW_PRIVATE` | `true` allows localhost and private-network targets. Leave `false` unless you are scanning the local demo site. |
-| `OPENAI_API_KEY` | Optional. When missing, rule detection still runs and AI is marked unavailable. |
-| `OPENAI_MODEL` | Optional. Default `gpt-4o-mini`. |
+| `OPENROUTER_API_KEY` | Optional OpenRouter key. When set, AI calls `https://openrouter.ai/api/v1`. |
+| `OPENAI_API_KEY` | Optional OpenAI key, used only when `OPENROUTER_API_KEY` is empty. When both are missing, rule detection still runs and AI is marked unavailable. |
+| `OPENAI_MODEL` | Optional. Default `gpt-4o-mini`, sent to OpenRouter as `openai/gpt-4o-mini`. |
 
 Web (`apps/web/.env`):
 
@@ -60,7 +61,7 @@ Web (`apps/web/.env`):
 | --- | --- |
 | `VITE_API_URL` | API origin. Default `http://localhost:3001`. |
 
-Do not put `OPENAI_API_KEY` in the web app or in git.
+Do not put `OPENROUTER_API_KEY` or `OPENAI_API_KEY` in the web app or in git.
 
 ## Run
 
